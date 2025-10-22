@@ -2766,119 +2766,107 @@ def clear_battlelog():
     conn.close()
 
 def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
-    try:
-        print("PRINT_LOG: starting simulate_fadzly_algorithm", flush=True)
-        logging.debug("Starting simulate_fadzly_algorithm")
-        st.write("✅ Step 1: Simulation started")
-        st.subheader("⚔️ LLKK Battle Arena")
-        st.session_state.simulation_run_this_month = True
+    import itertools
+    import random
+    from datetime import datetime
+    import traceback
 
-        st.session_state.simulation_months = (
-            selected_months if not run_all_months else None
-        )
-        st.session_state.run_all_months = run_all_months
+    st.subheader("⚔️ LLKK Battle Arena")
+    if st.session_state.get("simulation_run_this_month", False):
+        st.warning("Simulation already run this session. Refresh the page to run again.")
+        return
 
-        original_df = df.copy()
+    st.session_state.simulation_run_this_month = True
 
-        if selected_months and not run_all_months:
-            df = df[df["Month"].isin(selected_months)]
-            st.success(f"🎯 Simulation running for months: {', '.join(selected_months)}")
-        else:
-            st.success("🎯 Simulation running for ALL available months")
+    st.session_state.simulation_months = selected_months if not run_all_months else None
+    st.session_state.run_all_months = run_all_months
 
-        if df.empty:
-            st.error("❌ No data available for the selected months!")
-            print("PRINT_LOG: df is empty, returning", flush=True)
-            return
+    original_df = df.copy()
 
-        df["CV(%)"] = pd.to_numeric(df["CV(%)"], errors="coerce")
-        df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
-        df = df.dropna(subset=["n(QC)", "Working_Days"])
+    if selected_months and not run_all_months:
+        df = df[df["Month"].isin(selected_months)]
+        st.success(f"🎯 Simulation running for months: {', '.join(selected_months)}")
+    else:
+        st.success("🎯 Simulation running for ALL available months")
 
-        st.write("✅ Step 2: Database fetch")
-        print("PRINT_LOG: before DB fetch", flush=True)
+    if df.empty:
+        st.error("❌ No data available for the selected months!")
+        print("PRINT_LOG: df empty -> returning", flush=True)
+        return
 
-        # Initialize rating from database
-        ratings = {}
-        battle_logs = []
-        rating_progression = []
-        K = 32
+    print("PRINT_LOG: before numeric conversion", flush=True)
+    df["CV(%)"] = pd.to_numeric(df["CV(%)"], errors="coerce")
+    df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
+    df = df.dropna(subset=["n(QC)", "Working_Days"])
 
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT lab, parameter, level, rating FROM lab_ratings")
-        existing_ratings = cursor.fetchall()
-        conn.close()
+    # Initialize rating from database
+    ratings = {}
+    battle_logs = []
+    rating_progression = []
+    K = 32
 
-        st.write("✅ Step 3: After database fetch")
-        print("PRINT_LOG: after DB fetch, rows in existing_ratings:", len(existing_ratings), flush=True)
-        logging.debug(f"After DB fetch, existing_ratings count: {len(existing_ratings)}")
+    print("PRINT_LOG: before DB fetch", flush=True)
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT lab, parameter, level, rating FROM lab_ratings")
+    existing_ratings = cursor.fetchall()
+    conn.close()
+    print(f"PRINT_LOG: after DB fetch, rows in existing_ratings: {len(existing_ratings)}", flush=True)
 
-        # Create a dictionary for quick lookup
-        rating_lookup = {}
-        for row in existing_ratings:
-            try:
-                key = f"{row['lab']}_{row['parameter']}_{row['level']}"
-                rating_lookup[key] = row["rating"]
-            except Exception as e:
-                print(f"PRINT_LOG: error building rating_lookup for row {row}: {e}", flush=True)
-                logging.exception("Error building rating_lookup")
-
-        month_order = {
-            "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-            "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
-        }
-
-        def get_month_value(month_str):
-            # defensive: ensure string
-            try:
-                m = str(month_str)
-                if "-" in m:
-                    return m
-                else:
-                    current_year = datetime.now().year
-                    month_num = month_order.get(m, 1)
-                    return f"{current_year}-{month_num:02d}"
-            except Exception as e:
-                # return something sortable and log
-                print(f"PRINT_LOG: get_month_value error for {month_str}: {e}", flush=True)
-                logging.exception("get_month_value error")
-                return "9999-99"
-
-        # --- safe months extraction & sort ---
+    # Create a dictionary for quick lookup
+    rating_lookup = {}
+    for row in existing_ratings:
         try:
-            months_to_process = [str(m) for m in df["Month"].dropna().unique()]
-            print("PRINT_LOG: extracted months:", months_to_process, flush=True)
-            try:
-                sorted_months = sorted(months_to_process, key=lambda x: get_month_value(x))
-            except Exception as e:
-                print(f"PRINT_LOG: month sorting failed: {e}. Using unsorted months.", flush=True)
-                logging.exception("month sorting failed")
-                sorted_months = months_to_process
+            key = f"{row['lab']}_{row['parameter']}_{row['level']}"
+            rating_lookup[key] = row["rating"]
         except Exception as e:
-            print(f"PRINT_LOG: failed to prepare months_to_process: {e}", flush=True)
-            logging.exception("failed to prepare months")
-            st.error("❌ Failed to prepare months to process. See server logs.")
-            return
+            print(f"PRINT_LOG: rating_lookup build error for row {row}: {e}", flush=True)
 
-        all_labs = df["Lab"].dropna().unique().tolist()
-        all_params = df["Parameter"].dropna().unique().tolist()
-        all_levels = df["Level"].dropna().unique().tolist()
+    month_order = {
+        "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+        "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+    }
 
-        print("PRINT_LOG: all_labs count:", len(all_labs), "all_params:", len(all_params), "all_levels:", len(all_levels), flush=True)
+    def get_month_value(month_str):
+        try:
+            m = str(month_str)
+            if "-" in m:
+                return m
+            else:
+                current_year = datetime.now().year
+                month_num = month_order.get(m, 1)
+                return f"{current_year}-{month_num:02d}"
+        except Exception as e:
+            print(f"PRINT_LOG: get_month_value error for {month_str}: {e}", flush=True)
+            return "9999-99"
 
-        # progress counters & timing
-        total_groups = 0
-        for month in sorted_months:
-            month_df = df[df["Month"] == month]
-            groups = list(month_df.groupby(["Parameter", "Level"]))
-            total_groups += len(groups)
-        print(f"PRINT_LOG: total parameter-level groups to process: {total_groups}", flush=True)
+    # safe month extraction & sorting
+    try:
+        months_to_process = [str(m) for m in df["Month"].dropna().unique()]
+        print("PRINT_LOG: extracted months:", months_to_process, flush=True)
+        try:
+            sorted_months = sorted(months_to_process, key=lambda x: get_month_value(x))
+        except Exception as e:
+            print(f"PRINT_LOG: month sorting failed: {e} - using unsorted months", flush=True)
+            sorted_months = months_to_process
+    except Exception as e:
+        print(f"PRINT_LOG: failed to prepare months_to_process: {e}", flush=True)
+        st.error("❌ Failed to prepare months to process. See server logs.")
+        return
 
-        group_counter = 0
-        start_time = time()
+    all_labs = df["Lab"].dropna().unique().tolist()
+    all_params = df["Parameter"].dropna().unique().tolist()
+    all_levels = df["Level"].dropna().unique().tolist()
+    print(f"PRINT_LOG: all_labs count: {len(all_labs)} all_params: {len(all_params)} all_levels: {len(all_levels)}", flush=True)
 
-        # --- main loop ---
+    # estimate total groups for progress info
+    total_groups = 0
+    for m in sorted_months:
+        total_groups += len(df[df["Month"] == m].groupby(["Parameter", "Level"]))
+    print(f"PRINT_LOG: total parameter-level groups to process (estimate): {total_groups}", flush=True)
+
+    group_counter = 0
+    try:
         for month in sorted_months:
             print(f"PRINT_LOG: starting month {month}", flush=True)
             monthly_data = df[df["Month"] == month]
@@ -2888,27 +2876,28 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
 
             for (param, level), group in monthly_data.groupby(["Parameter", "Level"]):
                 group_counter += 1
-                if group_counter % 10 == 0:
-                    elapsed = time() - start_time
-                    print(f"PRINT_LOG: processed {group_counter}/{total_groups} groups - elapsed {elapsed:.1f}s", flush=True)
+                if group_counter % 5 == 0:
+                    print(f"PRINT_LOG: processed {group_counter}/{total_groups} groups", flush=True)
 
+                print(f"PRINT_LOG: processing param={param}, level={level}, group size={len(group)}", flush=True)
                 key_prefix = f"{param}_{level}"
 
-                # initialize ratings for labs in this group
+                # Initialize ratings for labs in this group
                 try:
                     for lab in group["Lab"].unique():
+                        print(f"PRINT_LOG: init lab {lab} for {param}-{level}", flush=True)
                         lab_key = f"{lab}_{key_prefix}"
                         if lab_key not in ratings:
                             ratings[lab_key] = rating_lookup.get(lab_key, 1500)
                 except Exception as e:
-                    print(f"PRINT_LOG: error initializing lab ratings for param {param}, level {level}: {e}", flush=True)
-                    logging.exception("error initializing lab ratings")
+                    print(f"PRINT_LOG: error initializing lab ratings for {param}-{level}: {e}", flush=True)
                     st.error("❌ Data error while initializing lab ratings. See server logs.")
-                    st.stop()
+                    return
 
                 expected_labs = all_labs
                 actual_labs = group["Lab"].unique()
                 missing_labs = set(expected_labs) - set(actual_labs)
+                print(f"PRINT_LOG: missing labs count={len(missing_labs)} for {param}-{level}", flush=True)
 
                 for missing_lab in missing_labs:
                     missing_key = f"{missing_lab}_{key_prefix}"
@@ -2916,27 +2905,29 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                         ratings[missing_key] = rating_lookup.get(missing_key, 1500)
                     ratings[missing_key] -= 10
                     try:
-                        print(f"PRINT_LOG: updating missing lab {missing_lab} rating to {ratings[missing_key]}", flush=True)
+                        print(f"PRINT_LOG: updating missing_lab {missing_lab} -> {ratings[missing_key]}", flush=True)
                         update_lab_rating(missing_lab, param, level, ratings[missing_key])
                     except Exception as e:
-                        print(f"PRINT_LOG: update_lab_rating failed for {missing_lab}: {e}", flush=True)
-                        logging.exception("update_lab_rating failed")
+                        print(f"PRINT_LOG: update_lab_rating failed for missing_lab {missing_lab}: {e}", flush=True)
                         st.error(f"update_lab_rating failed for {missing_lab}: {e}")
-                        st.stop()
+                        return
 
                 labs = group.to_dict("records")
+                print(f"PRINT_LOG: starting pairings for {param}-{level}, labs_count={len(labs)}", flush=True)
 
-                # All pairings
                 for lab1, lab2 in itertools.combinations(labs, 2):
                     labA, labB = lab1["Lab"], lab2["Lab"]
+                    # occasional sample
+                    if random.random() < 0.002:
+                        print(f"PRINT_LOG: sample pairing -> {labA} vs {labB}", flush=True)
+
                     cvA, cvB = lab1.get("CV(%)"), lab2.get("CV(%)")
                     rA, rB = lab1.get("Ratio"), lab2.get("Ratio")
 
                     labA_key = f"{labA}_{key_prefix}"
                     labB_key = f"{labB}_{key_prefix}"
 
-                    # compute cv_score and ratio_score (same logic you had)
-                    # ... (unchanged) ...
+                    # CV scoring
                     if pd.isna(cvA) and pd.isna(cvB):
                         cv_score_A = cv_score_B = 0.5
                     elif pd.isna(cvA):
@@ -2950,6 +2941,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                     else:
                         cv_score_A = cv_score_B = 0.5
 
+                    # Ratio scoring
                     if pd.isna(rA) and pd.isna(rB):
                         ratio_score_A = ratio_score_B = 0.5
                     elif pd.isna(rA):
@@ -2966,15 +2958,16 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                     S_A = (cv_score_A + ratio_score_A) / 2
                     S_B = (cv_score_B + ratio_score_B) / 2
 
-                    # ELO calculation
+                    # defensively ensure rating keys exist
+                    ratings.setdefault(labA_key, rating_lookup.get(labA_key, 1500))
+                    ratings.setdefault(labB_key, rating_lookup.get(labB_key, 1500))
+
                     try:
                         Ra, Rb = ratings[labA_key], ratings[labB_key]
-                    except KeyError as e:
-                        print(f"PRINT_LOG: missing rating key: {e} for pair {labA_key}, {labB_key}", flush=True)
-                        logging.exception("missing rating key")
-                        # initialize missing keys defensively
-                        ratings.setdefault(labA_key, rating_lookup.get(labA_key, 1500))
-                        ratings.setdefault(labB_key, rating_lookup.get(labB_key, 1500))
+                    except Exception as e:
+                        print(f"PRINT_LOG: rating retrieval error for {labA_key}/{labB_key}: {e}", flush=True)
+                        ratings[labA_key] = rating_lookup.get(labA_key, 1500)
+                        ratings[labB_key] = rating_lookup.get(labB_key, 1500)
                         Ra, Rb = ratings[labA_key], ratings[labB_key]
 
                     Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
@@ -2983,15 +2976,13 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                     ratings[labA_key] += K * (S_A - Ea)
                     ratings[labB_key] += K * (S_B - Eb)
 
-                    # DB update wrapped
                     try:
                         update_lab_rating(labA, param, level, ratings[labA_key])
                         update_lab_rating(labB, param, level, ratings[labB_key])
                     except Exception as e:
-                        print(f"PRINT_LOG: update_lab_rating failed for pair {labA}, {labB}: {e}", flush=True)
-                        logging.exception("update_lab_rating failed for pair")
+                        print(f"PRINT_LOG: update_lab_rating failed for pair {labA}/{labB}: {e}", flush=True)
                         st.error("DB update failed. See server logs.")
-                        st.stop()
+                        return
 
                     updatedA = round(ratings[labA_key], 1)
                     updatedB = round(ratings[labB_key], 1)
@@ -3020,13 +3011,14 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                             loser=loser,
                             updated_rating_a=updatedA,
                             updated_rating_b=updatedB,
-                            month=month,
+                            month=month
                         )
                     except Exception as e:
                         print(f"PRINT_LOG: save_battle_log failed for {labA} vs {labB}: {e}", flush=True)
-                        logging.exception("save_battle_log failed")
                         st.error("save_battle_log failed. See server logs.")
-                        st.stop()
+                        return
+
+                print(f"PRINT_LOG: finished pairings for {param}-{level}", flush=True)
 
                 # bonuses and final updates
                 for lab in group["Lab"].unique():
@@ -3036,21 +3028,16 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                         ratio_value = group[group["Lab"] == lab]["Ratio"].values[0]
                     except Exception as e:
                         print(f"PRINT_LOG: retrieving cv/ratio for lab {lab} failed: {e}", flush=True)
-                        logging.exception("cv/ratio retrieval failed")
                         continue
 
-                    if (
-                        not pd.isna(cv_value)
-                        and param in EFLM_TARGETS
-                        and cv_value <= EFLM_TARGETS[param]
-                    ):
+                    if not pd.isna(cv_value) and param in EFLM_TARGETS and cv_value <= EFLM_TARGETS[param]:
                         ratings[lab_key] += 5
                         try:
                             update_lab_rating(lab, param, level, ratings[lab_key])
                         except Exception as e:
                             print(f"PRINT_LOG: update_lab_rating failed on bonus for {lab}: {e}", flush=True)
-                            logging.exception("update_lab_rating failed on bonus")
-                            st.stop()
+                            st.error("DB update failed on bonus. See server logs.")
+                            return
 
                     if not pd.isna(ratio_value) and ratio_value == 1.0:
                         ratings[lab_key] += 5
@@ -3058,44 +3045,137 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                             update_lab_rating(lab, param, level, ratings[lab_key])
                         except Exception as e:
                             print(f"PRINT_LOG: update_lab_rating failed on ratio bonus for {lab}: {e}", flush=True)
-                            logging.exception("update_lab_rating failed on ratio bonus")
-                            st.stop()
+                            st.error("DB update failed on ratio bonus. See server logs.")
+                            return
 
                     try:
                         update_lab_rating(lab, param, level, ratings[lab_key])
                     except Exception as e:
                         print(f"PRINT_LOG: final update_lab_rating failed for {lab}: {e}", flush=True)
-                        logging.exception("final update_lab_rating failed")
-                        st.stop()
+                        st.error("Final DB update failed. See server logs.")
+                        return
 
                 # Record rating progression for this month
                 for lab in group["Lab"].unique():
                     lab_key = f"{lab}_{key_prefix}"
-                    rating_progression.append(
-                        {
+                    rating_progression.append({
+                        "Lab": lab,
+                        "Parameter": param,
+                        "Level": level,
+                        "Month": month,
+                        "Points": round(ratings[lab_key], 2)
+                    })
+
+        # Summaries
+        print("PRINT_LOG: finished all months, building summary", flush=True)
+        lab_elos = {}
+        lab_counts = {}
+        for key, elo in ratings.items():
+            parts = key.split("_")
+            lab = "_".join(parts[:-2])
+            lab_elos[lab] = lab_elos.get(lab, 0) + elo
+            lab_counts[lab] = lab_counts.get(lab, 0) + 1
+
+        avatars = get_lab_avatars()
+
+        summary_df = pd.DataFrame([{
+            "Lab": lab,
+            "Avatar": resolve_avatar_path(avatars.get(lab, "default.png")),
+            "Final Points": round(lab_elos[lab] / lab_counts[lab], 2),
+        } for lab in lab_elos]).sort_values(by="Final Points", ascending=False).reset_index(drop=True)
+
+        summary_df["Medal"] = ""
+        if len(summary_df) >= 1: summary_df.loc[0, "Medal"] = "🥇"
+        if len(summary_df) >= 2: summary_df.loc[1, "Medal"] = "🥈"
+        if len(summary_df) >= 3: summary_df.loc[2, "Medal"] = "🥉"
+
+        summary_tables = []
+        for month in months_to_process:
+            month_data = df[df["Month"] == month]
+            for (param, level), group in month_data.groupby(["Parameter", "Level"]):
+                rows = []
+                for lab in group["Lab"].unique():
+                    lab_key = f"{lab}_{param}_{level}"
+                    if lab_key in ratings:
+                        current_rating = ratings[lab_key]
+                        cv = group[group["Lab"] == lab]["CV(%)"].values[0]
+                        ratio_val = group[group["Lab"] == lab]["Ratio"].values[0]
+                        cv_bonus = 5 if (not pd.isna(cv) and param in EFLM_TARGETS and cv <= EFLM_TARGETS[param]) else 0
+                        ratio_bonus = 5 if (not pd.isna(ratio_val) and ratio_val == 1.0) else 0
+                        bonus = cv_bonus + ratio_bonus
+                        elo_before_bonus = current_rating - bonus
+                        final_elo = current_rating
+                        rows.append({
                             "Lab": lab,
-                            "Parameter": param,
+                            "Test": param,
                             "Level": level,
                             "Month": month,
-                            "Points": round(ratings[lab_key], 2),
-                        }
-                    )
+                            "Elo (before bonus)": round(elo_before_bonus, 1),
+                            "Bonus": f"+{bonus}",
+                            "Final Elo": round(final_elo, 1)
+                        })
 
-        # ... remainder of function (summary_df, summary_tables, etc.) ...
-        # keep the rest as-is but add print/log lines before heavy blocks
-        print("PRINT_LOG: finished main loops, building summaries", flush=True)
-        logging.debug("Finished main loops")
+                if rows:
+                    df_table = pd.DataFrame(rows).sort_values("Final Elo", ascending=False).reset_index(drop=True)
+                    df_table.index += 1
+                    df_table.insert(0, "Rank", df_table.index)
+                    summary_tables.append(df_table)
+                    st.markdown(f"### {param} — {level} (Month: {month}) (target CV {EFLM_TARGETS.get(param, 'n/a')})")
+                    st.dataframe(df_table)
+                    for _, row in df_table.iterrows():
+                        try:
+                            save_monthly_ranking(
+                                lab=row["Lab"],
+                                parameter=param,
+                                level=level,
+                                month=row["Month"],
+                                elo_before_bonus=row["Elo (before bonus)"],
+                                bonus=int(row["Bonus"].replace("+", "")),
+                                final_elo=row["Final Elo"],
+                                ranking=row["Rank"]
+                            )
+                        except Exception as e:
+                            print(f"PRINT_LOG: save_monthly_ranking failed for {row['Lab']}: {e}", flush=True)
+                            st.error("save_monthly_ranking failed. See server logs.")
+                            return
 
-        # (the rest of your summary building code unchanged, but you can add prints similarly)
-        # finally:
-        st.write("✅ Step 3: After battle loop")
+        if summary_tables:
+            monthly = pd.concat(summary_tables)
+            monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
+            monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
+            for month in months_to_process:
+                month_data = monthly_final[monthly_final["Month"] == month].copy()
+                month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
+                month_data.index += 1
+                month_data["Rank"] = month_data.index
+                for _, row in month_data.iterrows():
+                    try:
+                        save_monthly_final(
+                            month=row["Month"],
+                            lab=row["Lab"],
+                            lab_rank=row["Rank"],
+                            monthly_final_elo=round(row["Final Elo"], 2)
+                        )
+                    except Exception as e:
+                        print(f"PRINT_LOG: save_monthly_final failed for {row['Lab']}: {e}", flush=True)
+                        st.error("save_monthly_final failed. See server logs.")
+                        return
+
+            st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
+            pivot_data = monthly_final.pivot(index="Lab", columns="Month", values="Final Elo")
+            st.dataframe(pivot_data)
+
+        st.session_state.simulation_results = {"summary_tables": summary_tables}
+        st.session_state["elo_history"] = ratings
+        st.session_state["elo_progression"] = pd.DataFrame(rating_progression)
+        st.session_state["fadzly_battles"] = summary_df
+
+        print("PRINT_LOG: simulation completed", flush=True)
         st.success("✅ Battle simulation completed and saved to database.")
 
     except Exception:
-        # give full trace both to UI and logs
         err = traceback.format_exc()
         print("PRINT_LOG: unexpected exception:\n", err, flush=True)
-        logging.exception("Unexpected exception in simulate_fadzly_algorithm")
         st.error("❌ An unexpected error occurred in the simulation:")
         st.code(err)
 

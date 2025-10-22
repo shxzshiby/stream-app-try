@@ -2760,6 +2760,7 @@ def clear_battlelog():
 
 def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     try:
+        st.write("✅ Step 1: Simulation started")
         st.subheader("⚔️ LLKK Battle Arena")
         st.session_state.simulation_run_this_month = True
 
@@ -2782,6 +2783,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
         df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
         df = df.dropna(subset=["n(QC)", "Working_Days"])
 
+        st.write("✅ Step 2: Database fetch")
         # Initialize rating from database
         ratings = {}
         battle_logs = []
@@ -2793,6 +2795,8 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
         cursor.execute("SELECT lab, parameter, level, rating FROM lab_ratings")
         existing_ratings = cursor.fetchall()
         conn.close()
+        
+        st.write("✅ Step 3: After database fetch")
         
         # Create a dictionary for quick lookup
         rating_lookup = {}
@@ -3057,6 +3061,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
         st.session_state["elo_progression"] = pd.DataFrame(rating_progression)
         st.session_state["fadzly_battles"] = summary_df
 
+        st.write("✅ Step 3: After battle loop")
         st.success("✅ Battle simulation completed and saved to database.")
     except Exception:
         st.error("❌ An unexpected error occurred in the simulation:")

@@ -1,0 +1,8 @@
+streamlit
+pandas
+openpyxl
+plotly
+xlsxwriter
+mysql-connector-python
+altair
+numpy

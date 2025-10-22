@@ -13,6 +13,8 @@ import time
 from datetime import datetime 
 from Login import apply_sidebar_theme
 import traceback
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # EFLM Targets
 EFLM_TARGETS = {

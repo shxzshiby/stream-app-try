@@ -2951,15 +2951,15 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                     # --- Update ratings and save to DB ---
                     try:
                         update_lab_rating(labA, param, level, ratings[labA_key])
-                        PRINT_LOG(f"DB: updated labA {labA}-{param}-{level} ({ratings[labA_key]})")
+                        print(f"DB: updated labA {labA}-{param}-{level} ({ratings[labA_key]})")
                     except Exception as e:
-                        PRINT_LOG(f"⚠️ DB ERROR update_lab_rating (labA={labA}): {e}")
+                        print(f"⚠️ DB ERROR update_lab_rating (labA={labA}): {e}")
 
                     try:
                         update_lab_rating(labB, param, level, ratings[labB_key])
-                        PRINT_LOG(f"DB: updated labB {labB}-{param}-{level} ({ratings[labB_key]})")
+                        print(f"DB: updated labB {labB}-{param}-{level} ({ratings[labB_key]})")
                     except Exception as e:
-                        PRINT_LOG(f"⚠️ DB ERROR update_lab_rating (labB={labB}): {e}")
+                        print(f"⚠️ DB ERROR update_lab_rating (labB={labB}): {e}")
 
 
                     updatedA = round(ratings[labA_key], 1)
@@ -2981,9 +2981,9 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                             updated_rating_b=updatedB,
                             month=month
                         )
-                        PRINT_LOG(f"DB: inserted battle log {labA} vs {labB}")
+                        print(f"DB: inserted battle log {labA} vs {labB}")
                     except Exception as e:
-                        PRINT_LOG(f"⚠️ DB ERROR save_battle_log ({labA} vs {labB}): {e}")
+                        print(f"⚠️ DB ERROR save_battle_log ({labA} vs {labB}): {e}")
 
                 print(f"PRINT_LOG: finished pairings for {param}-{level}", flush=True)
 

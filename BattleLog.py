@@ -2862,7 +2862,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                             missing_lab, param, level, ratings[missing_key]
                         )
                     except Exception as e:
-                        st.error(f"update_lab_rating failed: {e}")
+                        st.write("update_lab_rating failed: {e}")
                         st.stop()
 
                 labs = group.to_dict("records")
@@ -2954,7 +2954,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                             month=month,
                         )
                     except:
-                        st.error(f"save_battle_log failed: {e}")
+                        st.write("save_battle_log failed: {e}")
                         st.stop()
 
                 for lab in group["Lab"].unique():
@@ -3093,7 +3093,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                                 ranking=row["Rank"],
                             )
                         except:
-                            st.error(f"save_monthly_ranking failed: {e}")
+                            st.write("save_monthly_ranking failed: {e}")
                             st.stop()
 
         if summary_tables:
@@ -3125,7 +3125,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                             monthly_final_elo=round(row["Final Elo"], 2),
                         )
                     except:
-                        st.error(f"save_monthly_final failed: {e}")
+                        st.write("save_monthly_final failed: {e}")
                         st.stop()
 
             st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
